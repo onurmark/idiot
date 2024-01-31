@@ -3,7 +3,9 @@ bin_PROGRAMS = idiot
 idiot_SOURCES = \
 	main.c \
 	i-mosquitto.h \
-	i-mosquitto.c
+	i-mosquitto.c \
+	i-mosquitto-message.h \
+	i-mosquitto-message.c
 
 idiot_LDADD = \
 	$(GLIB_LIBS) \

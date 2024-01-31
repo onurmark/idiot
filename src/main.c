@@ -1,106 +1,56 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include <mosquitto.h>
 #include <string.h>
+
+#include "i-mosquitto.h"
 
 #define SERIAL_NUMBER "A12131213"
 
-static void
-on_connect(struct mosquitto *mosq,
-		void *obj,
-		int reason_code,
-		int flags,
-		const mosquitto_property *prop)
+static GMainLoop *loop = NULL;
+
+static gboolean
+on_message(gpointer messge, gpointer user_data)
 {
-	char hello[50];
-	int rc;
+	g_message("Message received");
 
-	printf("on_connect: %s\n", mosquitto_connack_string(reason_code));
-	if (reason_code != 0) {
-		mosquitto_disconnect(mosq);
-	}
-
-	rc = mosquitto_subscribe(mosq, NULL, "device/" SERIAL_NUMBER "/config", 1);
-	if (rc != MOSQ_ERR_SUCCESS) {
-		fprintf(stderr, "Error subscribing: %s\n", mosquitto_strerror(rc));
-		mosquitto_disconnect(mosq);
-	}
-
-	snprintf(hello, sizeof(hello), "{ \"type\": \"CS2710G\", \"version\": \"1.0.0-rc1000\"}");
-
-	rc = mosquitto_publish(mosq,
-			NULL,
-			"device/" SERIAL_NUMBER "/hello",
-			strlen(hello),
-			hello,
-			2,
-			false);
-	if  (rc != MOSQ_ERR_SUCCESS) {
-		fprintf(stderr, "Error subscribing: %s\n", mosquitto_strerror(rc));
-	}
+	return TRUE;
 }
 
-static void
-on_subscribe(struct mosquitto *mosq,
-		void *obj,
-		int mid,
-		int qos_count,
-		const int *granted_qos,
-		const mosquitto_property *prop)
-{
-	int i;
-	bool have_subscription = false;
-
-	for (i = 0; i < qos_count; i++) {
-		printf("on_subscribe: %d: granted qos = %d\n", i, granted_qos[i]);
-
-		if (granted_qos[i] <= 2) {
-			have_subscription = true;
-		}
-	}
-
-	if (have_subscription == false) {
-		fprintf(stderr, "Error: All subscriptions rejected.\n");
-		mosquitto_disconnect(mosq);
-	}
-}
+static gint id1 = 1, id2 = 2;
 
 static void
-on_message(struct mosquitto *mosq,
-		void *obj,
-		const struct mosquitto_message *msg,
-		const mosquitto_property *prop)
+mosquitto_start(const gchar *host, gint port)
 {
-	printf("%s %d %s\n", msg->topic, msg->qos, (char *)msg->payload);
+	IMosquitto *mosquitto = NULL;
+	GSource *source = NULL;
+
+	mosquitto = i_mosquitto_new();
+
+	i_mosquitto_connect(mosquitto, host, port, 60);
+
+	i_mosquitto_add_subscribe(mosquitto, &id1, "device/" SERIAL_NUMBER "/config");
+	i_mosquitto_add_subscribe(mosquitto, &id2, "device/" SERIAL_NUMBER "/config2");
+
+	i_mosquitto_start(mosquitto);
+
+	source = i_mosquitto_source_new(mosquitto, NULL, NULL);
+	g_object_unref(mosquitto);
+
+	g_source_set_callback(source, (GSourceFunc)on_message, NULL, NULL);
+	g_source_attach(source, g_main_loop_get_context(loop));
+	g_source_unref(source);
 }
 
 int
 main(int argc, char *argv[])
 {
-	struct mosquitto *mosq;
-	int rc;
+	loop = g_main_loop_new(NULL, FALSE);
 
-	mosquitto_lib_init();
+	mosquitto_start("192.168.228.153", 1883);
 
-	mosq = mosquitto_new(NULL, true, NULL);
-
-	mosquitto_connect_v5_callback_set(mosq, on_connect);
-	mosquitto_subscribe_v5_callback_set(mosq, on_subscribe);
-	mosquitto_message_v5_callback_set(mosq, on_message);
-	mosquitto_will_set_v5(mosq, "device/" SERIAL_NUMBER "/will", 0, NULL, 1, 1, NULL);
-
-	rc = mosquitto_connect(mosq, "192.168.228.153", 1883, 60);
-	if (rc != MOSQ_ERR_SUCCESS) {
-		mosquitto_destroy(mosq);
-		fprintf(stderr, "Error: %s\n", mosquitto_strerror(rc));
-		return EXIT_FAILURE;
-	}
-
-	mosquitto_loop_forever(mosq, -1, 1);
-
-	mosquitto_lib_cleanup();
+	g_main_loop_run(loop);
+	g_main_loop_unref(loop);
 
 	return EXIT_SUCCESS;
 }

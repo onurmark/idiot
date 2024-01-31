@@ -45,5 +45,7 @@ PKG_CHECK_MODULES([MOSQUITTO], [libmosquitto >= 2.0])
 # Checks for library functions.
 
 AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+                 lib/Makefile
+                 src/Makefile
+                 tests/Makefile])
 AC_OUTPUT

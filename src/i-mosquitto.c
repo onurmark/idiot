@@ -3,8 +3,13 @@
 
 #include <mosquitto.h>
 
+#include "i-mqtt-subscribe.h"
+
 typedef struct {
 	struct mosquitto *mosq;
+	gchar *client_id;
+	GList *topic_filters;
+	GAsyncQueue *topic_queue;
 } IMosquittoPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE(IMosquitto, i_mosquitto, G_TYPE_OBJECT);
@@ -31,6 +36,13 @@ on_message(struct mosquitto *mosq,
 		const mosquitto_property *prop);
 
 static void
+on_disconnect(struct mosquitto *mosq,
+		void *obj,
+		int reason_code,
+		const mosquitto_property *props);
+
+
+static void
 i_mosquitto_class_init(IMosquittoClass *klass)
 {
 }
@@ -41,11 +53,18 @@ i_mosquitto_init(IMosquitto *self)
 	IMosquittoPrivate *priv =
 		i_mosquitto_get_instance_private(self);
 
-	priv->mosq = mosquitto_new(NULL, true, self);
+	priv->topic_queue = g_async_queue_new();
+
+	mosquitto_lib_init();
+
+	priv->client_id = g_uuid_string_random();
+
+	priv->mosq = mosquitto_new(priv->client_id, false, self);
 
 	mosquitto_connect_v5_callback_set(priv->mosq, on_connect);
 	mosquitto_subscribe_v5_callback_set(priv->mosq, on_subscribe);
 	mosquitto_message_v5_callback_set(priv->mosq, on_message);
+	mosquitto_disconnect_v5_callback_set(priv->mosq, on_disconnect);
 }
 
 static void
@@ -67,6 +86,30 @@ on_connect(struct mosquitto *mosq,
 }
 
 static void
+on_message(struct mosquitto *mosq,
+		void *obj,
+		const struct mosquitto_message *msg,
+		const mosquitto_property *prop)
+{
+	IMosquittoPrivate *priv =
+		i_mosquitto_get_instance_private(I_MOSQUITTO(obj));
+
+	g_message("[%d] %s %d %s\n", msg->mid, msg->topic, msg->qos, (char *)msg->payload);
+
+	g_async_queue_push(priv->topic_queue, (gpointer)msg);
+
+}
+
+static void
+on_disconnect(struct mosquitto *mosq,
+		void *obj,
+		int reason_code,
+		const mosquitto_property *props)
+{
+	g_message("on_disconnect: %s\n", mosquitto_connack_string(reason_code));
+}
+
+static void
 on_subscribe(struct mosquitto *mosq,
 		void *obj,
 		int mid,
@@ -80,36 +123,55 @@ on_subscribe(struct mosquitto *mosq,
 	gint i;
 	gboolean have_subscription = FALSE;
 
+	g_message("on_subscribe: mid: %d", mid);
+
 	for (i = 0; i < qos_count; i++) {
 		if (granted_qos[i] <= 2) {
 			have_subscription = TRUE;
 		}
 	}
 
-	if (have_subscription) {
+	if (have_subscription == false) {
 		g_message("Error: All subscriptions rejected.\n");
 		mosquitto_disconnect(priv->mosq);
 	}
 }
 
-static void
-on_message(struct mosquitto *mosq,
-		void *obj,
-		const struct mosquitto_message *msg,
-		const mosquitto_property *prop)
-{
-	g_message("%s %d %s\n", msg->topic, msg->qos, (char *)msg->payload);
-}
-
 gboolean
-i_mosquitto_add_subscribe(IMosquitto *self, gchar *topic)
+i_mqtt_subscribe(IMosquitto *self,
+		IMqttSubscribe *subscribe)
 {
 	IMosquittoPrivate *priv =
 		i_mosquitto_get_instance_private(self);
 
 	int rc;
 
-	mosquitto_subscribe_v5(priv->mosq, NULL, topic, 2, false, NULL);
+	rc = mosquitto_subscribe_v5(priv->mosq,
+			&subscribe->message_id,
+			subscribe->topic_filter,
+			subscribe->qos,
+			subscribe->options,
+			subscribe->properties);
+
+	if (rc != MOSQ_ERR_SUCCESS) {
+		return FALSE;
+	}
+
+	priv->topic_filters =
+		g_list_append(priv->topic_filters, subscribe);
+
+	return TRUE;
+}
+
+gboolean
+i_mosquitto_add_subscribe(IMosquitto *self, gint *mid, gchar *topic)
+{
+	IMosquittoPrivate *priv =
+		i_mosquitto_get_instance_private(self);
+
+	int rc;
+
+	mosquitto_subscribe_v5(priv->mosq, mid, topic, 2, false, NULL);
 
 	return TRUE;
 }
@@ -133,13 +195,19 @@ i_mosquitto_connect(IMosquitto *self,
 gboolean
 i_mosquitto_pending(IMosquitto *self)
 {
-	return TRUE;
+	IMosquittoPrivate *priv =
+		i_mosquitto_get_instance_private(self);
+
+	return (g_async_queue_length(priv->topic_queue) > 0);
 }
 
 struct mosquitto_message *
 i_mosquitto_pop_message(IMosquitto *self)
 {
-	return NULL;
+	IMosquittoPrivate *priv =
+		i_mosquitto_get_instance_private(self);
+
+	return g_async_queue_pop(priv->topic_queue);
 }
 
 void
@@ -160,6 +228,12 @@ i_mosquitto_stop(IMosquitto *self)
 	mosquitto_loop_stop(priv->mosq, false);
 }
 
+IMosquitto *
+i_mosquitto_new(void)
+{
+	return g_object_new(I_TYPE_MOSQUITTO, NULL);
+}
+
 typedef struct {
 	GSource parent;
 	IMosquitto *mosqitto;
@@ -174,6 +248,8 @@ i_mosquitto_source_prepare(GSource *source,
 		gint *timeout)
 {
 	IMosquittoSource *mosquitto_source = (IMosquittoSource *)source;
+
+	g_message("here");
 
 	return i_mosquitto_pending(mosquitto_source->mosqitto);
 }
@@ -252,8 +328,7 @@ i_mosquitto_source_new(IMosquitto *mosquitto,
 	GSource *source;
 	IMosquittoSource *mosquitto_source;
 
-	g_return_val_if_fail(mosquitto != NULL, NULL);
-	g_return_val_if_fail(cancellable != NULL ||
+	g_return_val_if_fail(cancellable == NULL ||
 			G_IS_CANCELLABLE(cancellable), NULL);
 
 	source = g_source_new(&i_mosquitto_source_funcs,
