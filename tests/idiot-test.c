@@ -1,4 +1,4 @@
-#include "idiot-mqtt-source.h"
+#include "idiot-mqtt.h"
 #include <glib.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,52 +8,41 @@
 static gboolean
 on_message(IdiotPublish *publish, gpointer user_data)
 {
-	g_message("topic: %s", (gchar *)publish->payload);
+	g_message("topic: %s, [%d]: %s",
+			publish->topic, publish->message_id, (gchar *)publish->payload);
 
 	return TRUE;
 }
 
-gboolean
-attach_context(IdiotMqtt *idiot, GMainContext *context)
+static void
+idiot_mqtt_run_complete(GObject *source_object,
+				     GAsyncResult *res,
+				     gpointer user_data)
 {
-	GSource *source;
+	IdiotMqtt *mqtt = IDIOT_MQTT(source_object);
+	GError *error = NULL;
 
-	source = idiot_mqtt_source_new(idiot, NULL, NULL);
+	idiot_mqtt_run_finish(mqtt, res, &error);
 
-	g_source_set_callback(source, (GSourceFunc)on_message, g_object_ref(idiot), g_object_unref);
-	g_source_attach(source, context);
-	g_source_unref(source);
-
-	return TRUE;
+	g_message("Stop mqtt client");
 }
 
 int main(int argc, char *argv[])
 {
 	IdiotMqtt *mqtt;
-	IdiotSubscribe subscribe;
-	GMainContext *context;
 	GMainLoop *loop;
+	GError *error = NULL;
 
-	memset(&subscribe, 0, sizeof(IdiotSubscribe));
-	subscribe.topic_filter = g_strdup("device/config");
-	subscribe.qos = 1;
-	
 	idiot_library_init();
 
 	mqtt = idiot_mqtt_new();
 
-	idiot_mqtt_connect(mqtt, "192.168.228.153", 1883, 60);
-	idiot_mqtt_subscribe(mqtt, &subscribe);
+	idiot_mqtt_subscribe(mqtt, "device/+/config", 1, 0);
+	idiot_mqtt_subscribe(mqtt, "device/#", 1, 0);
 
-	idiot_mqtt_start(mqtt);
+	idiot_mqtt_run_async(mqtt, "192.168.228.153", 1883, 60, NULL, (GAsyncReadyCallback)idiot_mqtt_run_complete, NULL);
 
-
-	// g_object_unref(mqtt);
-
-	context = g_main_context_new();
-	attach_context(mqtt, context);
-	loop = g_main_loop_new(context, TRUE);
-	g_main_context_unref(context);
+	loop = g_main_loop_new(NULL, FALSE);
 
 	g_main_loop_run(loop);
 	g_main_loop_unref(loop);

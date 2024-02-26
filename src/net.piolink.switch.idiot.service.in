@@ -1,0 +1,5 @@
+[D-BUS Service]
+
+Name=net.piolink.switch.idiot
+Exec=@prefix@/bin/idiot
+User=root

@@ -35,8 +35,17 @@ AC_SUBST(GLIB_MAKEFILE)
 
 GLIB_TESTS
 
+dnl *** gdbus-codegen ***
+AC_ARG_WITH(gdbus-codegen,
+  AS_HELP_STRING([--with-gdbus-codegen=[filename]],[Use external gdbus-codegen program]),
+  [GDBUS_CODEGEN=$withval],[GDBUS_CODEGEN=gdbus-codegen])
+AC_SUBST(GDBUS_CODEGEN)
+
 # Checks for libraries.
 PKG_CHECK_MODULES([MOSQUITTO], [libmosquitto >= 2.0])
+PKG_CHECK_MODULES([READLINE],  [readline >= 8.0])
+PKG_CHECK_MODULES([FLEX],      [libfl >= 2.6.0])
+PKG_CHECK_MODULES([JANSSON],   [jansson >= 2.10.0])
 
 # Checks for header files.
 
@@ -45,7 +54,11 @@ PKG_CHECK_MODULES([MOSQUITTO], [libmosquitto >= 2.0])
 # Checks for library functions.
 
 AC_CONFIG_FILES([Makefile
+                 libidiot/Makefile
                  lib/Makefile
                  src/Makefile
+                 src/net.piolink.switch.idiot.service
+                 health/Makefile
+                 health/net.piolink.switch.health.service
                  tests/Makefile])
 AC_OUTPUT

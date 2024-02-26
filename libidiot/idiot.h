@@ -5,9 +5,8 @@
 extern "C" {
 #endif
 
+#include <idiot-message.h>
 #include <idiot-mqtt.h>
-#include <idiot-mqtt-source.h>
-#include <idiot-subscribe.h>
 #include <idiot-publish.h>
 
 void

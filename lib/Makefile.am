@@ -1,35 +1,43 @@
+mqtt_client_interfaces= net.piolink.switch.idiot.xml
+mqtt_client_sources = \
+	dbus-mqtt-client.c \
+	dbus-mqtt-client.h
 
-AM_CPPFLAGS = \
-	-DG_LOG_DOMAIN=\"idiot\" \
-	-DLOCALEDIR=$(localedir) \
-	-I$(top_srcdir) \
-	-I$(top_builddir) \
-	$(GLIB_CFLAGS) \
-	$(MOSQUITTO_CFLAGS)
+$(mqtt_client_sources): $(mqtt_client_interfaces)
+	$(AM_V_GEN) $(GDBUS_CODEGEN) \
+		--interface-prefix=net.piolink.switch.idiot \
+		--c-namespace=DBus \
+		--generate-c-code $* $<
 
-libidiotincludedir = $(includedir)/libidiot-1.0/libidiot
+NO_DIST_BUILD_SOURCES = $(mqtt_client_sources)
 
-idiot_headers = \
-	idiot.h \
-	idiot-types.h \
-	idiot-mqtt.h \
-	idiot-mqtt-source.h \
-	idiot-subscribe.h \
-	idiot-publish.h
+health_interfaces = net.piolink.switch.health.xml
+health_sources = \
+	dbus-health-monitor.c \
+	dbus-health-monitor.h
 
-libidiotinclude_HEADERS = \
-	$(idiot_headers)
+$(health_sources): $(health_interfaces)
+	$(AM_V_GEN) $(GDBUS_CODEGEN) \
+		--interface-prefix=net.piolink.switch \
+		--c-namespace=DBus \
+		--generate-c-code $* $<
 
-lib_LTLIBRARIES = libidiot.la
+NO_DIST_BUILD_SOURCES += $(health_sources)
 
-libidiot_la_LIBADD = \
-	$(GLIB_LIBS) \
-	$(MOSQUITTO_LIBS)
+noinst_LTLIBRARIES = libdbus.la
 
-libidiot_la_SOURCES = \
-	idiot.c \
-	idiot-mqtt.c \
-	idiot-mqtt-source.c \
-	idiot-subscribe.c \
-	idiot-publish.c
+libdbus_la_CFLAGS = \
+	$(GLIB_CFLAGS)
+
+libdbus_la_LIBADD = \
+	$(GLIB_LIBS)
+
+nodist_libdbus_la_SOURCES = \
+	$(NO_DIST_BUILD_SOURCES)
+
+CLEANFILES = $(NO_DIST_BUILD_SOURCES)
+
+EXTRA_DIST = \
+	$(mqtt_client_interfaces) \
+	$(health_interfaces)
 

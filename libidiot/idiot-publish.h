@@ -3,7 +3,7 @@
 
 #include <gio/gio.h>
 
-#include "idiot-types.h"
+#include <idiot-types.h>
 
 G_BEGIN_DECLS
 
@@ -19,6 +19,14 @@ typedef struct _IdiotPublish {
 } IdiotPublish;
 
 GType idiot_publish_get_type(void);
+
+IdiotPublish *
+idiot_publish_new(gint message_id,
+	gchar *topic,
+	gpointer payload,
+	gint payload_len,
+	gint qos,
+	gboolean retain);
 
 IdiotPublish *
 idiot_publish_copy(IdiotPublish *publish);

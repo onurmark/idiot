@@ -6,7 +6,6 @@
 G_BEGIN_DECLS
 
 typedef struct _IdiotMqtt IdiotMqtt;
-typedef struct _IdiotPublish IdiotPublish;
 typedef struct _IdiotSubscribe IdiotSubscribe;
 
 G_END_DECLS

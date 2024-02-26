@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<node xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd" name="/">
+  <interface name="net.piolink.switch.health.Monitor">
+    <signal name="CpuUsage">
+      <arg type="d" name="usage" direction="out"/>
+    </signal>
+  </interface>
+</node>

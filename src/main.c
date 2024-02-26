@@ -1,56 +1,63 @@
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <glib.h>
 
-#include "i-mosquitto.h"
+#include "idiot-dbus.h"
+#include "idiot-devinfo-service.h"
+#include "idiot-health-service.h"
+#include "idiot-mqtt-client-impl.h"
 
-#define SERIAL_NUMBER "A12131213"
+typedef struct {
+	GMainLoop *loop;
+	IdiotDbus *dbus;
+} IdiotApplication;
 
-static GMainLoop *loop = NULL;
-
-static gboolean
-on_message(gpointer messge, gpointer user_data)
+static IdiotApplication *
+application_create(void)
 {
-	g_message("Message received");
+	IdiotApplication *application = g_new0(IdiotApplication, 1);
+	GDBusInterfaceSkeleton *skeleton;
 
-	return TRUE;
+	application->loop = g_main_loop_new(NULL, FALSE);
+
+	application->dbus = idiot_dbus_new();
+
+	/* append dbus skeleton */
+	skeleton = idiot_mqtt_client_impl_create();
+	idiot_dbus_append_skeleton(application->dbus,
+			"/net/piolink/switch/idiot/MqttClient",
+			skeleton);
+
+	idiot_mqtt_client_impl_append_service(IDIOT_MQTT_CLIENT_IMPL(skeleton),
+			"device", idiot_health_service_create());
+	idiot_mqtt_client_impl_append_service(IDIOT_MQTT_CLIENT_IMPL(skeleton),
+			"status", idiot_devinfo_service_create());
+
+	g_object_unref(skeleton);
+
+
+	return application;
 }
 
-static gint id1 = 1, id2 = 2;
-
 static void
-mosquitto_start(const gchar *host, gint port)
+application_destroy(IdiotApplication *application)
 {
-	IMosquitto *mosquitto = NULL;
-	GSource *source = NULL;
+	g_main_loop_unref(application->loop);
+	g_object_unref(application->dbus);
 
-	mosquitto = i_mosquitto_new();
-
-	i_mosquitto_connect(mosquitto, host, port, 60);
-
-	i_mosquitto_add_subscribe(mosquitto, &id1, "device/" SERIAL_NUMBER "/config");
-	i_mosquitto_add_subscribe(mosquitto, &id2, "device/" SERIAL_NUMBER "/config2");
-
-	i_mosquitto_start(mosquitto);
-
-	source = i_mosquitto_source_new(mosquitto, NULL, NULL);
-	g_object_unref(mosquitto);
-
-	g_source_set_callback(source, (GSourceFunc)on_message, NULL, NULL);
-	g_source_attach(source, g_main_loop_get_context(loop));
-	g_source_unref(source);
+	g_free(application);
 }
 
 int
 main(int argc, char *argv[])
 {
-	loop = g_main_loop_new(NULL, FALSE);
+	IdiotApplication *application;
 
-	mosquitto_start("192.168.228.153", 1883);
+	application = application_create();
+	
+	idiot_dbus_connect(application->dbus);
 
-	g_main_loop_run(loop);
-	g_main_loop_unref(loop);
+	g_main_loop_run(application->loop);
+
+	application_destroy(application);
 
 	return EXIT_SUCCESS;
 }

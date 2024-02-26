@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<node xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd" name="/">
+  <interface name="net.piolink.switch.idiot.MqttClient">
+    <method name="Connect">
+      <arg type="s" name="host" direction="in"/>
+      <arg type="i" name="port" direction="in"/>
+    </method>
+
+    <method name="Disconnect">
+    </method>
+  </interface>
+</node>
